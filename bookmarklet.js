@@ -24,12 +24,13 @@
 
   // ── Orchestrator ─────────────────────────────────────────────────────────────
   async function run(playerId, claimId, headers) {
-    let tasksData, citizensData, marketData;
+    let tasksData, citizensData, marketData, myInvData;
     try {
-      [tasksData, citizensData, marketData] = await Promise.all([
+      [tasksData, citizensData, marketData, myInvData] = await Promise.all([
         apiFetch(`/api/players/${playerId}/traveler-tasks`, headers),
         apiFetch(`/api/claims/${claimId}/citizens`, headers),
         apiFetch(`/api/market?q=&hasSellOrders=true&claimEntityId=${claimId}`, headers),
+        apiFetch(`/api/players/${playerId}/inventories`, headers),
       ]);
     } catch (err) {
       setStatus(`⚠ Failed to load data: ${err.message}`);
@@ -45,6 +46,7 @@
     showModal(rows, tasksData.expirationTimestamp, citizensData.count ?? citizensData.citizens?.length ?? '?', rows.length);
 
     // Enrichment runs in parallel — updates cells in-place as data arrives
+    enrichInventory(rows, myInvData);
     enrichMarket(rows, marketData, headers);
     enrichTraders(rows, citizensData, headers);
   }
@@ -73,6 +75,39 @@
       }
     }
     return rows;
+  }
+
+  // ── Player inventory enrichment ───────────────────────────────────────────────
+  function enrichInventory(rows, myInvData) {
+    // Build map: itemId string → [{location, qty}]
+    const invMap = {};
+    for (const inv of (myInvData?.inventories || [])) {
+      const loc = inv.inventoryName || 'Unknown';
+      for (const pocket of (inv.pockets || [])) {
+        const c = pocket.contents;
+        if (!c) continue;
+        const key = String(c.itemId);
+        if (!invMap[key]) invMap[key] = [];
+        invMap[key].push({ loc, qty: c.quantity });
+      }
+    }
+
+    rows.forEach((row, i) => {
+      const el = document.getElementById(`bcm-inv-${i}`);
+      if (!el) return;
+      const slots = invMap[row.id] || [];
+      if (!slots.length) {
+        el.innerHTML = `<span class="bcm-no">—</span>`;
+        return;
+      }
+      const total = slots.reduce((s, e) => s + e.qty, 0);
+      const enough = total >= row.qty;
+      const cls = enough ? 'bcm-inv-full' : 'bcm-inv-partial';
+      const detail = slots
+        .map(e => `${escHtml(e.loc)} <span class="bcm-trd-qty">(${e.qty.toLocaleString()})</span>`)
+        .join(', ');
+      el.innerHTML = `<span class="${cls}" title="Total: ${total.toLocaleString()} / ${row.qty.toLocaleString()} needed">${detail}</span>`;
+    });
   }
 
   // ── Market enrichment — claim presence + global lowest price ─────────────────
@@ -164,7 +199,7 @@
 
     const css = `
       #bcm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
-      #bcm-modal{background:#12121e;color:#ddd;border-radius:12px;padding:24px;max-width:96vw;width:1100px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.8)}
+      #bcm-modal{background:#12121e;color:#ddd;border-radius:12px;padding:24px;max-width:96vw;width:1300px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.8)}
       #bcm-modal h2{margin:0 0 3px;font-size:1.15rem;color:#f0a500;letter-spacing:.03em}
       #bcm-meta{font-size:.75rem;color:#666;margin-bottom:12px}
       #bcm-btns{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
@@ -190,6 +225,8 @@
       .bcm-price{color:#aaa;font-size:.7rem;margin-left:3px}
       .bcm-names{color:#7ec8e3;font-size:.73rem}
       .bcm-trd-qty{color:#555;font-size:.68rem}
+      .bcm-inv-full{color:#4caf50;font-size:.73rem}
+      .bcm-inv-partial{color:#e0a030;font-size:.73rem}
     `;
 
     const expiryStr = expiry
@@ -262,6 +299,7 @@
   function buildTable(rows) {
     const thead = `<tr>
       <th>Traveler</th><th>Item</th><th>Qty</th><th>Rarity</th><th>ID</th>
+      <th title="Your own inventory locations holding this item (green = enough, orange = partial)">In My Inventory</th>
       <th title="Claim citizens with a Trader Stand stocked with enough qty">In Stock (Traders)</th>
       <th title="Item listed on claim market · global lowest price">On Market ⓘ</th>
       <th>Task</th>
@@ -275,6 +313,7 @@
         <td class="bcm-qty">${r.qty.toLocaleString()}</td>
         <td>${escHtml(r.rarity)}</td>
         <td class="${idClass}">${idLabel}</td>
+        <td id="bcm-inv-${i}" class="bcm-async">⏳</td>
         <td id="bcm-trd-${i}" class="bcm-async">⏳</td>
         <td id="bcm-mkt-${i}" class="bcm-async">⏳</td>
         <td class="bcm-task">${escHtml(r.task)}</td>
@@ -290,11 +329,11 @@
   }
 
   function toTSV(rows) {
-    const header = 'Traveler\tItem\tQty\tRarity\tID\tIn Stock (Traders)\tOn Market\tTask';
+    const header = 'Traveler\tItem\tQty\tRarity\tID\tIn My Inventory\tIn Stock (Traders)\tOn Market\tTask';
     const lines = rows.map((r, i) => [
       r.traveler, r.item, r.qty, r.rarity,
       (r.type === 'cargo' ? 'cargo:' : '') + r.id,
-      cellText(i, 'bcm-trd'), cellText(i, 'bcm-mkt'),
+      cellText(i, 'bcm-inv'), cellText(i, 'bcm-trd'), cellText(i, 'bcm-mkt'),
       r.task
     ].join('\t'));
     return [header, ...lines].join('\n');
@@ -302,11 +341,11 @@
 
   function toCSV(rows) {
     const q = v => '"' + String(v).replace(/"/g, '""') + '"';
-    const header = 'Traveler,Item,Qty,Rarity,ID,In Stock (Traders),On Market,Task';
+    const header = 'Traveler,Item,Qty,Rarity,ID,In My Inventory,In Stock (Traders),On Market,Task';
     const lines = rows.map((r, i) => [
       q(r.traveler), q(r.item), r.qty, q(r.rarity),
       q((r.type === 'cargo' ? 'cargo:' : '') + r.id),
-      q(cellText(i, 'bcm-trd')), q(cellText(i, 'bcm-mkt')),
+      q(cellText(i, 'bcm-inv')), q(cellText(i, 'bcm-trd')), q(cellText(i, 'bcm-mkt')),
       q(r.task)
     ].join(','));
     return [header, ...lines].join('\n');
