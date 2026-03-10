@@ -1,171 +1,335 @@
 (function () {
-  if (!location.href.includes('traveler-tasks')) {
-    alert('Navigate to your Bitjita traveler tasks page first.\n\nhttps://bitjita.com/players/<your-id>/traveler-tasks');
-    return;
+  const HEADERS = { 'x-app-identifier': 'BitcraftCoinMinter' };
+
+  // ── Claim ID — prompt once, persist in localStorage ─────────────────────────
+  let claimId = localStorage.getItem('bcm_claim_id');
+  if (!claimId) {
+    claimId = prompt('Enter your Claim Entity ID\n(found in your Bitjita claim URL, e.g. bitjita.com/claims/864691128472806646):');
+    if (!claimId) return;
+    claimId = claimId.trim();
+    localStorage.setItem('bcm_claim_id', claimId);
   }
 
-  // ── Extract traveler names from tab buttons ──────────────────────────────
-  // ── Find the tab container via the traveler buttons ─────────────────────
-  // Structure: tabContainer > [buttonBar, panel1, panel2, ..., panel6]
-  // Traveler tab buttons match "Name N" (single word + digit count).
-  // ────────────────────────────────────────────────────────────────────────────
-  const travelerButtons = [...document.querySelectorAll('button')]
-    .filter(b => b.textContent.trim().match(/^[A-Za-z]+\s+\d+$/));
+  // ── Player ID — auto-detect from URL or prompt ───────────────────────────────
+  const urlMatch = location.pathname.match(/\/players\/(\d+)/);
+  const playerId = urlMatch?.[1] ?? prompt('Enter your Player Entity ID\n(from your Bitjita profile URL, e.g. bitjita.com/players/1008806316549363686):');
+  if (!playerId) return;
 
-  if (!travelerButtons.length) {
-    alert('Could not find traveler tabs. Make sure you are on the traveler tasks page.');
-    return;
-  }
-
-  const buttonBar = travelerButtons[0].closest('div');
-  const tabContainer = buttonBar?.parentElement;
-
-  if (!tabContainer) {
-    alert('Could not find traveler tab structure. Page layout may have changed.');
-    return;
-  }
-
-  const panels = [...tabContainer.children].filter(c => c !== buttonBar); // one panel per traveler
-
-  // Extract traveler names from the button bar in order
-  const travelerNames = [...buttonBar.querySelectorAll('button')]
-    .map(b => { const m = b.textContent.trim().match(/^([A-Za-z]+)\s+\d+$/); return m ? m[1] : null; })
-    .filter(Boolean);
-
-  // ── Extract items from each panel ────────────────────────────────────────
-  const rows = [];
-
-  panels.forEach((panel, i) => {
-    const traveler = travelerNames[i] || `Traveler${i + 1}`;
-    panel.querySelectorAll('a[href]').forEach(el => {
-      const href = el.getAttribute('href') || '';
-      const m = href.match(/\/(items|cargo)\/(\d+)$/);
-      if (!m) return;
-
-      const txt = el.textContent.replace(/\s+/g, ' ').trim();
-      if (txt.includes('Hex Coin')) return;
-
-      // Strip leading icon abbreviation e.g. "MO ", "RT ", "BH "
-      const clean = txt.replace(/^[A-Z]{1,3}\s+/, '');
-      const qm = clean.match(/^(\d+)x\s+(.+?)(?:\s+T\d+)?\s+(Common|Uncommon|Rare|Epic|Mythic|Default)/i);
-      if (!qm) return;
-
-      // Find task description by walking up the DOM
-      let desc = '', anc = el;
-      for (let j = 0; j < 10; j++) {
-        anc = anc.parentElement;
-        if (!anc) break;
-        const s = anc.querySelector('span[class*="flex-1"], span[class*="text-base"]');
-        if (s) { desc = s.textContent.trim(); break; }
-      }
-
-      rows.push({
-        traveler,
-        task: desc,
-        item: qm[2].trim(),
-        qty: +qm[1],
-        rarity: qm[3],
-        id: m[2],
-        type: m[1], // "items" or "cargo"
-      });
-    });
-  });
-
-  if (!rows.length) {
-    alert('No tasks found. Make sure you are on the traveler tasks page.');
-    return;
-  }
-
-  // ── Remove existing modal if re-running ─────────────────────────────────
+  // ── Remove stale modal ───────────────────────────────────────────────────────
   document.getElementById('bcm-overlay')?.remove();
 
-  // ── Build modal ──────────────────────────────────────────────────────────
-  const css = `
-    #bcm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
-    #bcm-modal{background:#12121e;color:#ddd;border-radius:12px;padding:24px;max-width:92vw;width:900px;max-height:85vh;overflow:auto;box-shadow:0 8px 40px rgba(0,0,0,.7)}
-    #bcm-modal h2{margin:0 0 4px;font-size:1.15rem;color:#f0a500;letter-spacing:.03em}
-    #bcm-modal p{margin:0 0 14px;font-size:.78rem;color:#666}
-    #bcm-btns{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-    #bcm-btns button{padding:5px 14px;border:none;border-radius:6px;cursor:pointer;font-size:.8rem;font-weight:600}
-    #bcm-close{background:#8b1a1a;color:#fff}
-    #bcm-copy{background:#1a5c35;color:#fff}
-    #bcm-csv{background:#1a3a6c;color:#fff}
-    #bcm-modal table{border-collapse:collapse;width:100%;font-size:.8rem}
-    #bcm-modal th{background:#1e1e38;color:#f0a500;padding:7px 11px;text-align:left;position:sticky;top:0;white-space:nowrap}
-    #bcm-modal td{padding:5px 11px;border-bottom:1px solid #1e1e2e;vertical-align:top}
-    #bcm-modal tr:hover td{background:#181828}
-    .bcm-qty{text-align:right;font-weight:700;color:#7ec8e3;white-space:nowrap}
-    .bcm-id{font-family:monospace;font-size:.73rem;color:#777}
-    .bcm-cargo{color:#e09050}
-    .bcm-task{font-size:.75rem;color:#999;max-width:260px}
-  `;
+  // ── Show loading skeleton, then run ─────────────────────────────────────────
+  showModal(null, null, 0, 0);
+  run(playerId, claimId, HEADERS);
 
-  const resetEl = document.querySelector('span[class*="countdown"], [class*="reset"]');
-  const resetText = resetEl ? ' • ' + resetEl.closest('div')?.textContent?.trim() : '';
+  // ── Orchestrator ─────────────────────────────────────────────────────────────
+  async function run(playerId, claimId, headers) {
+    let tasksData, citizensData, marketData;
+    try {
+      [tasksData, citizensData, marketData] = await Promise.all([
+        apiFetch(`/api/players/${playerId}/traveler-tasks`, headers),
+        apiFetch(`/api/claims/${claimId}/citizens`, headers),
+        apiFetch(`/api/market?q=&hasSellOrders=true&claimEntityId=${claimId}`, headers),
+      ]);
+    } catch (err) {
+      setStatus(`⚠ Failed to load data: ${err.message}`);
+      return;
+    }
 
-  const thead = `<tr>
-    <th>Traveler</th><th>Item</th><th>Qty</th><th>Rarity</th><th>Item ID</th><th>Task</th>
-  </tr>`;
+    const rows = buildRows(tasksData);
+    if (!rows.length) {
+      setStatus('No incomplete tasks found.');
+      return;
+    }
 
-  const tbody = rows.map(r => {
-    const idClass = r.type === 'cargo' ? 'bcm-id bcm-cargo' : 'bcm-id';
-    const idLabel = (r.type === 'cargo' ? 'cargo:' : '') + r.id;
-    return `<tr>
-      <td>${r.traveler}</td>
-      <td>${r.item}</td>
-      <td class="bcm-qty">${r.qty}</td>
-      <td>${r.rarity}</td>
-      <td class="${idClass}">${idLabel}</td>
-      <td class="bcm-task">${r.task}</td>
-    </tr>`;
-  }).join('');
+    showModal(rows, tasksData.expirationTimestamp, citizensData.count ?? citizensData.citizens?.length ?? '?', rows.length);
 
-  const toTSV = () => [
-    'Traveler\tItem\tQty\tRarity\tItem ID\tTask',
-    ...rows.map(r => [r.traveler, r.item, r.qty, r.rarity, (r.type === 'cargo' ? 'cargo:' : '') + r.id, r.task].join('\t'))
-  ].join('\n');
+    // Enrichment runs in parallel — updates cells in-place as data arrives
+    enrichMarket(rows, marketData, headers);
+    enrichTraders(rows, citizensData, headers);
+  }
 
-  const toCSV = () => [
-    'Traveler,Item,Qty,Rarity,Item ID,Task',
-    ...rows.map(r => [
-      r.traveler, r.item, r.qty, r.rarity,
-      (r.type === 'cargo' ? 'cargo:' : '') + r.id,
-      '"' + r.task.replace(/"/g, '""') + '"'
-    ].join(','))
-  ].join('\n');
+  // ── Build task rows from API data ────────────────────────────────────────────
+  function buildRows(tasksData) {
+    const rows = [];
+    for (const task of (tasksData.tasks || [])) {
+      if (task.completed) continue;
+      const traveler = (task.description || '').split(' ')[0] || 'Unknown';
+      for (const req of (task.requiredItems || [])) {
+        if (req.item_id === 1) continue; // skip Hex Coin reward
+        const isCargo = req.item_type === 'cargo';
+        const lookup = isCargo ? tasksData.cargo : tasksData.items;
+        const info = lookup?.[req.item_id] ?? {};
+        rows.push({
+          traveler,
+          task:   task.description || '',
+          item:   info.name || String(req.item_id),
+          qty:    req.quantity,
+          id:     String(req.item_id),
+          type:   req.item_type,    // "item" or "cargo"
+          rarity: info.rarityStr || '',
+          tier:   info.tier ?? '',
+        });
+      }
+    }
+    return rows;
+  }
 
-  const div = document.createElement('div');
-  div.id = 'bcm-overlay';
-  div.innerHTML = `
-    <style>${css}</style>
-    <div id="bcm-modal">
-      <h2>Bitcraft Coin Minter — Traveler Tasks</h2>
-      <p>${rows.length} items across ${travelerNames.length} travelers${resetText}</p>
+  // ── Market enrichment — claim presence + global lowest price ─────────────────
+  async function enrichMarket(rows, marketData, headers) {
+    const marketSet = new Set((marketData?.data?.items || []).map(i => String(i.id)));
+
+    // Fetch prices only for items actually listed at the claim
+    const uniqueIds = [...new Set(
+      rows
+        .filter(r => r.type !== 'cargo' && marketSet.has(r.id))
+        .map(r => r.id)
+    )];
+
+    const priceMap = {};
+    await Promise.all(uniqueIds.map(async id => {
+      const d = await apiFetch(`/api/items/${id}`, headers).catch(() => null);
+      priceMap[id] = d?.marketStats?.lowestSellPrice ?? null;
+    }));
+
+    rows.forEach((row, i) => {
+      const el = document.getElementById(`bcm-mkt-${i}`);
+      if (!el) return;
+      if (row.type === 'cargo') {
+        el.innerHTML = `<span class="bcm-na">cargo</span>`;
+        return;
+      }
+      if (marketSet.has(row.id)) {
+        const price = priceMap[row.id];
+        const priceStr = price != null
+          ? ` <span class="bcm-price">${price.toLocaleString()}¢</span>`
+          : '';
+        el.innerHTML = `<span class="bcm-yes">✓</span>${priceStr}`;
+      } else {
+        el.innerHTML = `<span class="bcm-no">—</span>`;
+      }
+    });
+  }
+
+  // ── Trader enrichment — fetch all citizen inventories ────────────────────────
+  async function enrichTraders(rows, citizensData, headers) {
+    const citizens = citizensData.citizens || [];
+
+    setStatus(`Fetching ${citizens.length} trader inventories…`);
+
+    const invResults = await Promise.all(
+      citizens.map(c =>
+        apiFetch(`/api/players/${c.entityId}/inventories`, headers).catch(() => null)
+      )
+    );
+
+    // Build map: itemId string → [{name, qty}]
+    const traderMap = {};
+    citizens.forEach((citizen, i) => {
+      const inv = invResults[i];
+      if (!inv) return;
+      const stands = (inv.inventories || []).filter(x =>
+        (x.inventoryName || '').includes('Trader Stand')
+      );
+      for (const stand of stands) {
+        for (const pocket of (stand.pockets || [])) {
+          const c = pocket.contents;
+          if (!c) continue;
+          const key = String(c.itemId);
+          if (!traderMap[key]) traderMap[key] = [];
+          traderMap[key].push({ name: citizen.userName, qty: c.quantity });
+        }
+      }
+    });
+
+    rows.forEach((row, i) => {
+      const el = document.getElementById(`bcm-trd-${i}`);
+      if (!el) return;
+      const matches = (traderMap[row.id] || []).filter(e => e.qty >= row.qty);
+      if (matches.length) {
+        el.innerHTML = `<span class="bcm-names">${matches.map(e =>
+          `${escHtml(e.name)} <span class="bcm-trd-qty">(${e.qty.toLocaleString()})</span>`
+        ).join(', ')}</span>`;
+      } else {
+        el.innerHTML = `<span class="bcm-no">—</span>`;
+      }
+    });
+
+    setStatus('');
+  }
+
+  // ── Render modal ─────────────────────────────────────────────────────────────
+  function showModal(rows, expiry, citizenCount, rowCount) {
+    document.getElementById('bcm-overlay')?.remove();
+
+    const css = `
+      #bcm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
+      #bcm-modal{background:#12121e;color:#ddd;border-radius:12px;padding:24px;max-width:96vw;width:1100px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.8)}
+      #bcm-modal h2{margin:0 0 3px;font-size:1.15rem;color:#f0a500;letter-spacing:.03em}
+      #bcm-meta{font-size:.75rem;color:#666;margin-bottom:12px}
+      #bcm-btns{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+      #bcm-btns button{padding:5px 14px;border:none;border-radius:6px;cursor:pointer;font-size:.8rem;font-weight:600}
+      #bcm-close{background:#8b1a1a;color:#fff}
+      #bcm-copy{background:#1a5c35;color:#fff}
+      #bcm-csv{background:#1a3a6c;color:#fff}
+      #bcm-clr{background:#333;color:#aaa;font-weight:400}
+      #bcm-status{font-size:.73rem;color:#888;margin-left:4px}
+      #bcm-tbl-wrap{overflow:auto;flex:1}
+      #bcm-modal table{border-collapse:collapse;width:100%;font-size:.8rem}
+      #bcm-modal th{background:#1e1e38;color:#f0a500;padding:7px 11px;text-align:left;position:sticky;top:0;white-space:nowrap;z-index:1}
+      #bcm-modal td{padding:5px 11px;border-bottom:1px solid #1a1a2c;vertical-align:middle}
+      #bcm-modal tr:hover td{background:#181828}
+      .bcm-qty{text-align:right;font-weight:700;color:#7ec8e3;white-space:nowrap}
+      .bcm-id{font-family:monospace;font-size:.73rem;color:#666}
+      .bcm-cargo-id{font-family:monospace;font-size:.73rem;color:#e09050}
+      .bcm-task{font-size:.74rem;color:#888;max-width:240px}
+      .bcm-async{color:#444;font-size:.75rem}
+      .bcm-yes{color:#4caf50;font-weight:700}
+      .bcm-no{color:#444}
+      .bcm-na{color:#555;font-size:.7rem;font-style:italic}
+      .bcm-price{color:#aaa;font-size:.7rem;margin-left:3px}
+      .bcm-names{color:#7ec8e3;font-size:.73rem}
+      .bcm-trd-qty{color:#555;font-size:.68rem}
+    `;
+
+    const expiryStr = expiry
+      ? ` · Resets ${new Date(expiry * 1000).toLocaleString()}`
+      : '';
+
+    const loadingHtml = `
+      <div id="bcm-overlay">
+        <style>${css}</style>
+        <div id="bcm-modal">
+          <h2>⚙ Bitcraft Coin Minter — Traveler Tasks</h2>
+          <div id="bcm-meta">Loading…</div>
+          <div id="bcm-btns">
+            <button id="bcm-close">✕ Close</button>
+            <span id="bcm-status">Fetching task data…</span>
+          </div>
+          <div id="bcm-tbl-wrap"></div>
+        </div>
+      </div>`;
+
+    const div = document.createElement('div');
+    div.id = 'bcm-overlay';
+    div.innerHTML = `<style>${css}</style><div id="bcm-modal">
+      <h2>⚙ Bitcraft Coin Minter — Traveler Tasks</h2>
+      <div id="bcm-meta">${rows ? `${rowCount} item${rowCount !== 1 ? 's' : ''} · ${citizenCount} claim citizens${expiryStr}` : 'Loading…'}</div>
       <div id="bcm-btns">
         <button id="bcm-close">✕ Close</button>
-        <button id="bcm-copy">⎘ Copy TSV</button>
-        <button id="bcm-csv">↓ Download CSV</button>
+        ${rows ? `<button id="bcm-copy">⎘ Copy TSV</button><button id="bcm-csv">↓ Download CSV</button><button id="bcm-clr">⌫ Clear Claim ID</button>` : ''}
+        <span id="bcm-status">${rows ? '' : 'Fetching task data…'}</span>
       </div>
-      <table><thead>${thead}</thead><tbody>${tbody}</tbody></table>
+      <div id="bcm-tbl-wrap">${rows ? buildTable(rows) : ''}</div>
     </div>`;
 
-  document.body.appendChild(div);
+    document.body.appendChild(div);
 
-  document.getElementById('bcm-close').onclick = () => div.remove();
-  div.onclick = e => { if (e.target === div) div.remove(); };
+    document.getElementById('bcm-close').onclick = () => div.remove();
+    div.onclick = e => { if (e.target === div) div.remove(); };
 
-  document.getElementById('bcm-copy').onclick = () => {
-    navigator.clipboard.writeText(toTSV()).then(() => {
-      const btn = document.getElementById('bcm-copy');
-      btn.textContent = '✓ Copied!';
-      setTimeout(() => { btn.textContent = '⎘ Copy TSV'; }, 2000);
+    const copyBtn = document.getElementById('bcm-copy');
+    if (copyBtn) {
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(toTSV(rows)).then(() => {
+          copyBtn.textContent = '✓ Copied!';
+          setTimeout(() => { copyBtn.textContent = '⎘ Copy TSV'; }, 2000);
+        });
+      };
+    }
+
+    const csvBtn = document.getElementById('bcm-csv');
+    if (csvBtn) {
+      csvBtn.onclick = () => {
+        const a = document.createElement('a');
+        a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(toCSV(rows));
+        a.download = 'traveler-tasks.csv';
+        a.click();
+      };
+    }
+
+    const clrBtn = document.getElementById('bcm-clr');
+    if (clrBtn) {
+      clrBtn.onclick = () => {
+        localStorage.removeItem('bcm_claim_id');
+        clrBtn.textContent = '✓ Cleared';
+        clrBtn.disabled = true;
+        setTimeout(() => { clrBtn.textContent = '⌫ Clear Claim ID'; clrBtn.disabled = false; }, 2000);
+      };
+    }
+  }
+
+  function buildTable(rows) {
+    const thead = `<tr>
+      <th>Traveler</th><th>Item</th><th>Qty</th><th>Rarity</th><th>ID</th>
+      <th title="Claim citizens with a Trader Stand stocked with enough qty">In Stock (Traders)</th>
+      <th title="Item listed on claim market · global lowest price">On Market ⓘ</th>
+      <th>Task</th>
+    </tr>`;
+    const tbody = rows.map((r, i) => {
+      const idClass = r.type === 'cargo' ? 'bcm-cargo-id' : 'bcm-id';
+      const idLabel = (r.type === 'cargo' ? 'cargo:' : '') + r.id;
+      return `<tr>
+        <td>${escHtml(r.traveler)}</td>
+        <td>${escHtml(r.item)}</td>
+        <td class="bcm-qty">${r.qty.toLocaleString()}</td>
+        <td>${escHtml(r.rarity)}</td>
+        <td class="${idClass}">${idLabel}</td>
+        <td id="bcm-trd-${i}" class="bcm-async">⏳</td>
+        <td id="bcm-mkt-${i}" class="bcm-async">⏳</td>
+        <td class="bcm-task">${escHtml(r.task)}</td>
+      </tr>`;
+    }).join('');
+    return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  }
+
+  // ── Export helpers ────────────────────────────────────────────────────────────
+  function cellText(rowIndex, colId) {
+    const el = document.getElementById(`${colId}-${rowIndex}`);
+    return el ? el.innerText.replace(/\s+/g, ' ').trim() : '';
+  }
+
+  function toTSV(rows) {
+    const header = 'Traveler\tItem\tQty\tRarity\tID\tIn Stock (Traders)\tOn Market\tTask';
+    const lines = rows.map((r, i) => [
+      r.traveler, r.item, r.qty, r.rarity,
+      (r.type === 'cargo' ? 'cargo:' : '') + r.id,
+      cellText(i, 'bcm-trd'), cellText(i, 'bcm-mkt'),
+      r.task
+    ].join('\t'));
+    return [header, ...lines].join('\n');
+  }
+
+  function toCSV(rows) {
+    const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+    const header = 'Traveler,Item,Qty,Rarity,ID,In Stock (Traders),On Market,Task';
+    const lines = rows.map((r, i) => [
+      q(r.traveler), q(r.item), r.qty, q(r.rarity),
+      q((r.type === 'cargo' ? 'cargo:' : '') + r.id),
+      q(cellText(i, 'bcm-trd')), q(cellText(i, 'bcm-mkt')),
+      q(r.task)
+    ].join(','));
+    return [header, ...lines].join('\n');
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────────
+  function apiFetch(url, headers) {
+    return fetch(url, { headers }).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+      return r.json();
     });
-  };
+  }
 
-  document.getElementById('bcm-csv').onclick = () => {
-    const a = document.createElement('a');
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(toCSV());
-    a.download = 'traveler-tasks.csv';
-    a.click();
-  };
+  function setStatus(msg) {
+    const el = document.getElementById('bcm-status');
+    if (el) el.textContent = msg;
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
 })();

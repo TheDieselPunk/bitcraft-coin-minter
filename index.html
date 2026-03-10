@@ -151,7 +151,7 @@
 <body>
   <div class="card">
     <h1>⚙ Bitcraft Coin Minter</h1>
-    <p class="subtitle">Extracts all traveler task requirements into a single table — with item IDs.</p>
+    <p class="subtitle">Pulls traveler tasks via the Bitjita API — shows item IDs, trader stock, and market prices.</p>
 
     <h2>Install</h2>
 
@@ -180,22 +180,30 @@
 
     <div class="step">
       <div class="step-num">3</div>
-      <p>Navigate to your Bitjita traveler tasks page:<br>
-        <code>bitjita.com/players/&lt;your-id&gt;/traveler-tasks</code></p>
+      <p>Navigate to <strong>any Bitjita page</strong> for your player — your profile, the
+        market, anywhere that has your player ID in the URL.<br>
+        On the <strong>first run</strong> you'll be prompted for your
+        <strong>Claim Entity ID</strong> (from the claim URL). It's saved automatically for
+        future runs.</p>
     </div>
 
     <div class="step">
       <div class="step-num">4</div>
-      <p>Click <strong>⚙ Coin Minter</strong> in your bookmarks bar. A table of all tasks
-        across all 6 travelers will appear.</p>
+      <p>Click <strong>⚙ Coin Minter</strong> in your bookmarks bar. A table of all
+        incomplete tasks across all travelers will appear — with trader stock and market
+        data filled in within a few seconds.</p>
     </div>
 
     <hr class="divider">
 
     <h2>Features</h2>
     <div class="features">
-      <div class="feature"><strong>All travelers</strong>All 6 tabs in one table</div>
-      <div class="feature"><strong>Item IDs</strong>Matches items &amp; cargo IDs</div>
+      <div class="feature"><strong>All travelers</strong>All tasks in one table via API</div>
+      <div class="feature"><strong>Item IDs</strong>Items &amp; cargo IDs included</div>
+      <div class="feature"><strong>In Stock (Traders)</strong>Claim citizens with enough stock in their Trader Stand</div>
+      <div class="feature"><strong>On Market</strong>Claim market presence + global lowest price</div>
+      <div class="feature"><strong>Auto-detects player</strong>Player ID read from URL</div>
+      <div class="feature"><strong>Remembers claim</strong>Claim ID saved to localStorage</div>
       <div class="feature"><strong>Copy TSV</strong>Paste straight into a spreadsheet</div>
       <div class="feature"><strong>Download CSV</strong>Save as a file</div>
     </div>
