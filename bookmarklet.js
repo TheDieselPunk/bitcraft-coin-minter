@@ -36,7 +36,6 @@
     tr.bcm-task-hdr td{border-top:2px solid #28284a;font-size:.79rem}
     tr.bcm-item-row:hover td{background:#161624}
     .bcm-traveler{font-weight:700;color:#f0a500;white-space:nowrap;padding-right:6px}
-    .bcm-desc{color:#bbb;max-width:380px}
     .bcm-item-name{padding-left:24px!important;color:#aaa}
     .bcm-num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
     .bcm-qty{color:#7ec8e3;font-weight:700}
@@ -341,8 +340,8 @@
     const icon       = task.expanded ? '▾' : '▸';
 
     let html = `<tr class="bcm-task-hdr" data-tidx="${task.idx}">
-      <td class="bcm-traveler">${escHtml(task.traveler)}</td>
-      <td class="bcm-desc" colspan="8">${icon}</td>
+      <td class="bcm-traveler">${icon} ${escHtml(task.traveler)}</td>
+      <td colspan="8"></td>
       <td class="bcm-num">${HEX} ${fmt(task.reward)}</td>
       <td class="bcm-num">${costStr}</td>
       <td class="bcm-num${profitCls}">${profitStr}</td>
