@@ -339,7 +339,7 @@
 
     let html = `<tr class="bcm-task-hdr" data-tidx="${task.idx}">
       <td class="bcm-traveler">${escHtml(task.traveler)}</td>
-      <td class="bcm-desc" colspan="8">${icon} ${escHtml(task.description)}</td>
+      <td class="bcm-desc" colspan="8">${icon}</td>
       <td class="bcm-num">${HEX} ${fmt(task.reward)}</td>
       <td class="bcm-num">${costStr}</td>
       <td class="bcm-num${profitCls}">${profitStr}</td>
