@@ -39,9 +39,6 @@
     .bcm-item-name{padding-left:24px!important;color:#aaa}
     .bcm-num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
     .bcm-qty{color:#7ec8e3;font-weight:700}
-    .bcm-rarity{font-size:.7rem;color:#777}
-    .bcm-id{font-family:monospace;font-size:.67rem;color:#444}
-    .bcm-cargo-id{font-family:monospace;font-size:.67rem;color:#a06030}
     .bcm-sub{color:#3a3a55;font-size:.68rem}
     .bcm-ok{color:#4caf50;font-weight:600}
     .bcm-pos{color:#4caf50;font-weight:700}
@@ -52,7 +49,7 @@
     .bcm-inv-ok{color:#4caf50;font-size:.72rem}
     .bcm-inv-part{color:#e0a030;font-size:.72rem}
     .bcm-col-inv{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .bcm-col-trd{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .bcm-col-trd{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .bcm-col-price{white-space:nowrap}
     .bcm-col-craft{white-space:nowrap}
   `;
@@ -341,7 +338,7 @@
 
     let html = `<tr class="bcm-task-hdr" data-tidx="${task.idx}">
       <td class="bcm-traveler">${icon} ${escHtml(task.traveler)}</td>
-      <td colspan="8"></td>
+      <td colspan="6"></td>
       <td class="bcm-num">${HEX} ${fmt(task.reward)}</td>
       <td class="bcm-num">${costStr}</td>
       <td class="bcm-num${profitCls}">${profitStr}</td>
@@ -398,15 +395,10 @@
         :                                   `<span class="bcm-dim" title="${escHtml(tip)}">✗ no mats${bld}</span>`;
     }
 
-    const idCls  = item.type === 'cargo' ? 'bcm-cargo-id' : 'bcm-id';
-    const idLabel = (item.type === 'cargo' ? 'cargo:' : '') + item.id;
-
     return `<tr class="bcm-item-row">
       <td></td>
       <td class="bcm-item-name">${escHtml(item.name)}</td>
       <td class="bcm-num bcm-qty">${fmt(item.qty)}</td>
-      <td class="bcm-rarity">${escHtml(item.rarity)}</td>
-      <td class="${idCls}">${idLabel}</td>
       <td class="bcm-col-inv" title="${slots.map(e => `${e.loc} (${e.qty.toLocaleString()})`).join(', ')}">${invHtml}</td>
       <td class="bcm-col-trd" title="${(item.traderSlots || []).map(e => `${e.name} (${e.qty.toLocaleString()})`).join(', ')}">${trdHtml}</td>
       <td class="bcm-col-price">${priceHtml}</td>
@@ -437,8 +429,6 @@
       { label: 'Traveler',       sort: 'traveler'  },
       { label: 'Item / Task',    sort: null         },
       { label: 'Qty',            sort: null         },
-      { label: 'Rarity',         sort: null         },
-      { label: 'ID',             sort: null         },
       { label: 'My Inventory',   sort: null         },
       { label: 'Traders',        sort: null         },
       { label: `Price ${HEX}`,   sort: null         },
