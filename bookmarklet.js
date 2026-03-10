@@ -196,8 +196,11 @@
         if (item.price === false) { allKnown = false; totalCost = null; }
         else if (totalCost != null) totalCost += item.price * item.qty;
       }
-      task.totalCost = allKnown ? totalCost : null;
-      task.profit    = task.totalCost != null ? task.reward - task.totalCost : null;
+      const allCargo = task.items.every(i => i.type === 'cargo');
+      task.totalCost = allCargo ? null : (allKnown ? totalCost : null);
+      task.profit    = task.totalCost != null ? task.reward - task.totalCost
+                     : allCargo               ? task.reward
+                     :                          null;
     }
     G.marketDone = true;
     renderTable();
