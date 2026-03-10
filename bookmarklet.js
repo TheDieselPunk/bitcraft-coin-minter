@@ -7,7 +7,7 @@
   // ── CSS (must be declared before first use in inject()) ───────────────────────
   const CSS = `
     #bcm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
-    #bcm-modal{background:#12121e;color:#ddd;border-radius:12px;padding:24px;max-width:98vw;width:1440px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 48px rgba(0,0,0,.9)}
+    #bcm-modal{background:#12121e;color:#ddd;border-radius:12px;padding:24px;max-width:98vw;width:1200px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 48px rgba(0,0,0,.9)}
     #bcm-hdr-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
     #bcm-modal h2{margin:0;font-size:1.1rem;color:#f0a500}
     #bcm-cd{font-size:.85rem;font-weight:600}
@@ -20,23 +20,20 @@
     #bcm-btns button:hover{opacity:.8}
     #bcm-close{background:#8b1a1a;color:#fff}
     #bcm-refresh-btn{background:#1a3a5c;color:#fff}
-    #bcm-expand-all,#bcm-collapse-all{background:#252535;color:#999;font-weight:400}
     #bcm-copy,#bcm-csv{background:#1a5c35;color:#fff}
     #bcm-clr{background:#252525;color:#666;font-weight:400}
     #bcm-status{font-size:.72rem;color:#777;margin-left:2px}
     #bcm-refresh-in{font-size:.7rem;color:#3a3a55;margin-left:auto;font-variant-numeric:tabular-nums}
     #bcm-tbl-wrap{overflow:auto;flex:1;min-height:0}
-    #bcm-tbl{border-collapse:collapse;width:100%;font-size:.78rem;min-width:1300px}
+    #bcm-tbl{border-collapse:collapse;width:100%;font-size:.78rem;min-width:900px}
     #bcm-tbl thead th{background:#1a1a30;color:#f0a500;padding:7px 10px;text-align:left;position:sticky;top:0;z-index:2;white-space:nowrap;border-bottom:2px solid #2a2a50}
     th.bcm-sortable{cursor:pointer;user-select:none}
     th.bcm-sortable:hover{background:#22224a;color:#ffc030}
-    #bcm-tbl td{padding:4px 10px;vertical-align:middle;border-bottom:1px solid #191928}
-    tr.bcm-task-hdr{background:#18182a;cursor:pointer}
-    tr.bcm-task-hdr:hover td{background:#20203c}
-    tr.bcm-task-hdr td{border-top:2px solid #28284a;font-size:.79rem}
-    tr.bcm-item-row:hover td{background:#161624}
-    .bcm-traveler{font-weight:700;color:#f0a500;white-space:nowrap;padding-right:6px}
-    .bcm-item-name{padding-left:24px!important;color:#aaa}
+    #bcm-tbl td{padding:6px 10px;vertical-align:top;border-bottom:1px solid #191928}
+    tr.bcm-task-row{border-bottom:2px solid #28284a}
+    tr.bcm-task-row:hover td{background:#161624}
+    .bcm-traveler{font-weight:700;color:#f0a500;white-space:nowrap;padding-right:6px;vertical-align:top}
+    .bcm-items{color:#ccc;line-height:1.7}
     .bcm-num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
     .bcm-qty{color:#7ec8e3;font-weight:700}
     .bcm-sub{color:#3a3a55;font-size:.68rem}
@@ -48,10 +45,10 @@
     .bcm-blue{color:#7ec8e3;font-size:.72rem}
     .bcm-inv-ok{color:#4caf50;font-size:.72rem}
     .bcm-inv-part{color:#e0a030;font-size:.72rem}
-    .bcm-col-inv{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .bcm-col-trd{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .bcm-col-price{white-space:nowrap}
-    .bcm-col-craft{white-space:nowrap}
+    .bcm-col-inv{max-width:160px;line-height:1.7}
+    .bcm-col-trd{max-width:260px;line-height:1.7}
+    .bcm-col-price{line-height:1.7;white-space:nowrap}
+    .bcm-col-craft{line-height:1.7;white-space:nowrap}
   `;
 
   // ── Global state ──────────────────────────────────────────────────────────────
@@ -151,7 +148,7 @@
         iIdx++;
       }
       if (!items.length) continue;
-      tasks.push({ idx: tIdx, traveler, description: task.description || '', reward, items, expanded: true, totalCost: null, profit: null });
+      tasks.push({ idx: tIdx, traveler, description: task.description || '', reward, items, totalCost: null, profit: null });
       tIdx++;
     }
     return tasks;
@@ -304,13 +301,6 @@
     });
 
     tbody.innerHTML = sorted.map(task => renderTask(task)).join('');
-
-    tbody.querySelectorAll('tr.bcm-task-hdr').forEach(row => {
-      row.onclick = () => {
-        const task = G.tasks.find(t => t.idx === +row.dataset.tidx);
-        if (task) { task.expanded = !task.expanded; renderTable(); }
-      };
-    });
   }
 
   function sortVal(task) {
@@ -324,86 +314,68 @@
   }
 
   function renderTask(task) {
-    const allCargo   = task.items.every(i => i.type === 'cargo');
-    const costStr    = task.totalCost != null  ? `${HEX} ${fmt(task.totalCost)}`
-                     : G.marketDone && allCargo ? '—'
-                     : G.marketDone            ? `${HEX} ?`
-                     :                           '⏳';
-    const profitStr  = task.profit != null  ? `${HEX} ${fmt(task.profit)}`
-                     : G.marketDone && allCargo ? '—'
-                     : G.marketDone            ? `${HEX} ?`
-                     :                           '⏳';
-    const profitCls  = task.profit == null ? '' : task.profit >= 0 ? ' bcm-pos' : ' bcm-neg';
-    const icon       = task.expanded ? '▾' : '▸';
+    const allCargo  = task.items.every(i => i.type === 'cargo');
+    const costStr   = task.totalCost != null  ? `${HEX} ${fmt(task.totalCost)}`
+                    : G.marketDone && allCargo ? '—'
+                    : G.marketDone            ? `${HEX} ?`
+                    :                           '⏳';
+    const profitStr = task.profit != null     ? `${HEX} ${fmt(task.profit)}`
+                    : G.marketDone && allCargo ? '—'
+                    : G.marketDone            ? `${HEX} ?`
+                    :                           '⏳';
+    const profitCls = task.profit == null ? '' : task.profit >= 0 ? ' bcm-pos' : ' bcm-neg';
 
-    let html = `<tr class="bcm-task-hdr" data-tidx="${task.idx}">
-      <td class="bcm-traveler">${icon} ${escHtml(task.traveler)}</td>
-      <td colspan="6"></td>
+    const itemsHtml = task.items.map(i =>
+      `<span class="bcm-qty">${fmt(i.qty)}×</span> ${escHtml(i.name)}`
+    ).join('<br>');
+
+    const invHtml = task.items.map(item => {
+      const slots = item.invSlots || [];
+      const total = slots.reduce((s, e) => s + e.qty, 0);
+      if (!slots.length) return `<span class="bcm-dim">—</span>`;
+      const cls = total >= item.qty ? 'bcm-inv-ok' : 'bcm-inv-part';
+      const tip = `${total.toLocaleString()} / ${item.qty.toLocaleString()} needed`;
+      return `<span class="${cls}" title="${escHtml(tip)}">${slots.map(e => `${escHtml(e.loc)} <span class="bcm-sub">(${e.qty.toLocaleString()})</span>`).join(', ')}</span>`;
+    }).join('<br>');
+
+    const trdHtml = task.items.map(item => {
+      if (item.traderSlots == null && !G.tradersDone) return '⏳';
+      if (!(item.traderSlots || []).length) return `<span class="bcm-dim">—</span>`;
+      const shown = item.traderSlots.slice(0, 3);
+      const extra = item.traderSlots.length - 3;
+      const names = shown.map(e => `${escHtml(e.name)} <span class="bcm-sub">(${e.qty.toLocaleString()})</span>`).join(', ');
+      const more  = extra > 0 ? ` <span class="bcm-sub">+${extra} more</span>` : '';
+      return `<span class="bcm-blue">${names}${more}</span>`;
+    }).join('<br>');
+
+    const priceHtml = task.items.map(item => {
+      if (item.type === 'cargo') return `<span class="bcm-na">—</span>`;
+      if (item.price == null && !G.marketDone) return '⏳';
+      if (!item.price) return `<span class="bcm-dim">not listed</span>`;
+      return `${HEX} ${fmt(item.price)} <span class="bcm-sub">(${HEX} ${fmt(item.price * item.qty)})</span>`;
+    }).join('<br>');
+
+    const craftHtml = task.items.map(item => {
+      if (item.craftInfo == null && !G.craftDone) return '⏳';
+      const ci  = item.craftInfo ?? { status: 'none' };
+      const tip = ci.details?.map(d => `${d.name}: ${d.have.toLocaleString()} / ${d.need.toLocaleString()}`).join('\n') || '';
+      const bld = ci.building ? ` <span class="bcm-sub">(${escHtml(ci.building)})</span>` : '';
+      return ci.status === 'none'    ? `<span class="bcm-na">—</span>`
+        : ci.status === 'yes'        ? `<span class="bcm-ok" title="${escHtml(tip)}">✓${bld}</span>`
+        : ci.status === 'partial'    ? `<span class="bcm-inv-part" title="${escHtml(tip)}">~${bld}</span>`
+        :                              `<span class="bcm-dim" title="${escHtml(tip)}">✗${bld}</span>`;
+    }).join('<br>');
+
+    return `<tr class="bcm-task-row">
+      <td class="bcm-traveler">${escHtml(task.traveler)}</td>
+      <td class="bcm-items">${itemsHtml}</td>
+      <td class="bcm-col-inv">${invHtml}</td>
+      <td class="bcm-col-trd">${trdHtml}</td>
+      <td class="bcm-col-price">${priceHtml}</td>
+      <td class="bcm-col-craft">${craftHtml}</td>
       <td class="bcm-num">${HEX} ${fmt(task.reward)}</td>
       <td class="bcm-num">${costStr}</td>
       <td class="bcm-num${profitCls}">${profitStr}</td>
-    </tr>`;
-
-    if (task.expanded) html += task.items.map(item => renderItem(item)).join('');
-    return html;
-  }
-
-  function renderItem(item) {
-    // ── Inventory ──
-    const slots    = item.invSlots || [];
-    const invTotal = slots.reduce((s, e) => s + e.qty, 0);
-    const invHtml  = !slots.length
-      ? `<span class="bcm-dim">—</span>`
-      : `<span class="${invTotal >= item.qty ? 'bcm-inv-ok' : 'bcm-inv-part'}"
-             title="Total ${invTotal.toLocaleString()} / ${item.qty.toLocaleString()} needed"
-         >${slots.map(e => `${escHtml(e.loc)} <span class="bcm-sub">(${e.qty.toLocaleString()})</span>`).join(', ')}</span>`;
-
-    // ── Traders ──
-    const trdHtml = item.traderSlots == null && !G.tradersDone ? '⏳'
-      : !(item.traderSlots || []).length ? `<span class="bcm-dim">—</span>`
-      : (() => {
-          const shown = item.traderSlots.slice(0, 3);
-          const extra = item.traderSlots.length - 3;
-          const names = shown.map(e => `${escHtml(e.name)} <span class="bcm-sub">(${e.qty.toLocaleString()})</span>`).join(', ');
-          const more  = extra > 0 ? ` <span class="bcm-sub">+${extra} more</span>` : '';
-          return `<span class="bcm-blue">${names}${more}</span>`;
-        })();
-
-    // ── Price ──
-    let priceHtml;
-    if (item.type === 'cargo') {
-      priceHtml = `<span class="bcm-na">cargo</span>`;
-    } else if (item.price == null && !G.marketDone) {
-      priceHtml = '⏳';
-    } else if (!item.price) {
-      priceHtml = `<span class="bcm-dim">not listed</span>`;
-    } else {
-      priceHtml = `${HEX} ${fmt(item.price)} <span class="bcm-sub">(${HEX} ${fmt(item.price * item.qty)} total)</span>`;
-    }
-
-    // ── Craftable ──
-    let craftHtml;
-    if (item.craftInfo == null && !G.craftDone) {
-      craftHtml = '⏳';
-    } else {
-      const ci = item.craftInfo ?? { status: 'none' };
-      const tip = ci.details?.map(d => `${d.name}: ${d.have.toLocaleString()} / ${d.need.toLocaleString()}`).join('\n') || '';
-      const bld = ci.building ? ` <span class="bcm-sub">(${escHtml(ci.building)})</span>` : '';
-      craftHtml = ci.status === 'none'    ? `<span class="bcm-na">—</span>`
-        : ci.status === 'yes'             ? `<span class="bcm-ok" title="${escHtml(tip)}">✓ yes${bld}</span>`
-        : ci.status === 'partial'         ? `<span class="bcm-inv-part" title="${escHtml(tip)}">~ partial${bld}</span>`
-        :                                   `<span class="bcm-dim" title="${escHtml(tip)}">✗ no mats${bld}</span>`;
-    }
-
-    return `<tr class="bcm-item-row">
-      <td></td>
-      <td class="bcm-item-name">${escHtml(item.name)}</td>
-      <td class="bcm-num bcm-qty">${fmt(item.qty)}</td>
-      <td class="bcm-col-inv" title="${slots.map(e => `${e.loc} (${e.qty.toLocaleString()})`).join(', ')}">${invHtml}</td>
-      <td class="bcm-col-trd" title="${(item.traderSlots || []).map(e => `${e.name} (${e.qty.toLocaleString()})`).join(', ')}">${trdHtml}</td>
-      <td class="bcm-col-price">${priceHtml}</td>
-      <td class="bcm-col-craft">${craftHtml}</td>
-      <td></td><td></td><td></td>
     </tr>`;
   }
 
@@ -424,11 +396,10 @@
   function showTableModal() {
     document.getElementById('bcm-overlay')?.remove();
 
-    // 11 columns: Traveler | Item/Task (colspan 7 in task rows) | Reward | Cost | Profit
+    // 9 columns: Traveler | Items | My Inventory | Traders | Price | Craftable | Reward | Cost | Profit
     const COLS = [
       { label: 'Traveler',       sort: 'traveler'  },
-      { label: 'Item / Task',    sort: null         },
-      { label: 'Qty',            sort: null         },
+      { label: 'Items',          sort: null         },
       { label: 'My Inventory',   sort: null         },
       { label: 'Traders',        sort: null         },
       { label: `Price ${HEX}`,   sort: null         },
@@ -453,8 +424,6 @@
       <div id="bcm-btns">
         <button id="bcm-close">✕ Close</button>
         <button id="bcm-refresh-btn">↺ Refresh</button>
-        <button id="bcm-expand-all">⊞ All</button>
-        <button id="bcm-collapse-all">⊟ All</button>
         <button id="bcm-copy">⎘ TSV</button>
         <button id="bcm-csv">↓ CSV</button>
         <button id="bcm-clr">⌫ Claim ID</button>
@@ -488,8 +457,6 @@
     document.getElementById('bcm-close').onclick       = () => closeModal();
     ov.onclick = e => { if (e.target === ov) closeModal(); };
     document.getElementById('bcm-refresh-btn').onclick  = () => { clearTimers(); showLoadingModal(); startRun(); };
-    document.getElementById('bcm-expand-all').onclick   = () => { G.tasks.forEach(t => t.expanded = true);  renderTable(); };
-    document.getElementById('bcm-collapse-all').onclick = () => { G.tasks.forEach(t => t.expanded = false); renderTable(); };
     document.getElementById('bcm-copy').onclick = () => {
       const btn = document.getElementById('bcm-copy');
       navigator.clipboard.writeText(toTSV()).then(() => {
