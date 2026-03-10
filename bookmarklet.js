@@ -22,6 +22,8 @@
     #bcm-refresh-btn{background:#1a3a5c;color:#fff}
     #bcm-copy,#bcm-csv{background:#1a5c35;color:#fff}
     #bcm-clr{background:#252525;color:#666;font-weight:400}
+    #bcm-filter-btn{background:#252535;color:#999;font-weight:400}
+    #bcm-filter-btn.bcm-active{background:#1a4a1a;color:#7cfc00;font-weight:600}
     #bcm-status{font-size:.72rem;color:#777;margin-left:2px}
     #bcm-refresh-in{font-size:.7rem;color:#3a3a55;margin-left:auto;font-variant-numeric:tabular-nums}
     #bcm-tbl-wrap{overflow:auto;flex:1;min-height:0}
@@ -60,6 +62,7 @@
     marketDone: false, tradersDone: false, craftDone: false,
     countdownTimer: null, refreshTimer: null, refreshCountdownTimer: null,
     refreshAt: null, loading: false,
+    filterCompletable: false,
   };
 
   // ── Entry ─────────────────────────────────────────────────────────────────────
@@ -300,7 +303,17 @@
       return G.sortAsc ? cmp : -cmp;
     });
 
-    tbody.innerHTML = sorted.map(task => renderTask(task)).join('');
+    const display = G.filterCompletable ? sorted.filter(isCompletable) : sorted;
+    tbody.innerHTML = display.map(task => renderTask(task)).join('');
+
+    const meta = document.getElementById('bcm-meta');
+    if (meta) {
+      const total = G.tasks.length;
+      const shown = display.length;
+      meta.textContent = G.filterCompletable
+        ? `${shown} of ${total} task${total !== 1 ? 's' : ''} (completable only) · ${G.citizenCount} citizens`
+        : `${total} task${total !== 1 ? 's' : ''} · ${G.citizenCount} citizens`;
+    }
   }
 
   function sortVal(task) {
@@ -311,6 +324,17 @@
       case 'profit':    return task.profit;
       default:          return null;
     }
+  }
+
+  // A task is completable if every item has at least one obtainable source
+  function isCompletable(task) {
+    return task.items.every(item => {
+      if ((item.invSlots || []).reduce((s, e) => s + e.qty, 0) >= item.qty) return true; // in inventory
+      if (item.price)                           return true;   // on market at claim
+      if ((item.traderSlots || []).length > 0)  return true;   // trader has stock
+      if (item.craftInfo?.status === 'yes')     return true;   // fully craftable
+      return false;
+    });
   }
 
   function renderTask(task) {
@@ -424,6 +448,7 @@
       <div id="bcm-btns">
         <button id="bcm-close">✕ Close</button>
         <button id="bcm-refresh-btn">↺ Refresh</button>
+        <button id="bcm-filter-btn">☑ Completable</button>
         <button id="bcm-copy">⎘ TSV</button>
         <button id="bcm-csv">↓ CSV</button>
         <button id="bcm-clr">⌫ Claim ID</button>
@@ -457,6 +482,13 @@
     document.getElementById('bcm-close').onclick       = () => closeModal();
     ov.onclick = e => { if (e.target === ov) closeModal(); };
     document.getElementById('bcm-refresh-btn').onclick  = () => { clearTimers(); showLoadingModal(); startRun(); };
+    const filterBtn = document.getElementById('bcm-filter-btn');
+    if (G.filterCompletable) filterBtn.classList.add('bcm-active');
+    filterBtn.onclick = () => {
+      G.filterCompletable = !G.filterCompletable;
+      filterBtn.classList.toggle('bcm-active', G.filterCompletable);
+      renderTable();
+    };
     document.getElementById('bcm-copy').onclick = () => {
       const btn = document.getElementById('bcm-copy');
       navigator.clipboard.writeText(toTSV()).then(() => {
