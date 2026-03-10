@@ -52,6 +52,10 @@
     .bcm-blue{color:#7ec8e3;font-size:.72rem}
     .bcm-inv-ok{color:#4caf50;font-size:.72rem}
     .bcm-inv-part{color:#e0a030;font-size:.72rem}
+    .bcm-col-inv{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .bcm-col-trd{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .bcm-col-price{white-space:nowrap}
+    .bcm-col-craft{white-space:nowrap}
   `;
 
   // ── Global state ──────────────────────────────────────────────────────────────
@@ -335,7 +339,7 @@
 
     let html = `<tr class="bcm-task-hdr" data-tidx="${task.idx}">
       <td class="bcm-traveler">${escHtml(task.traveler)}</td>
-      <td class="bcm-desc" colspan="7">${icon} ${escHtml(task.description)}</td>
+      <td class="bcm-desc" colspan="8">${icon} ${escHtml(task.description)}</td>
       <td class="bcm-num">${HEX} ${fmt(task.reward)}</td>
       <td class="bcm-num">${costStr}</td>
       <td class="bcm-num${profitCls}">${profitStr}</td>
@@ -358,8 +362,13 @@
     // ── Traders ──
     const trdHtml = item.traderSlots == null && !G.tradersDone ? '⏳'
       : !(item.traderSlots || []).length ? `<span class="bcm-dim">—</span>`
-      : `<span class="bcm-blue">${item.traderSlots.map(e =>
-          `${escHtml(e.name)} <span class="bcm-sub">(${e.qty.toLocaleString()})</span>`).join(', ')}</span>`;
+      : (() => {
+          const shown = item.traderSlots.slice(0, 3);
+          const extra = item.traderSlots.length - 3;
+          const names = shown.map(e => `${escHtml(e.name)} <span class="bcm-sub">(${e.qty.toLocaleString()})</span>`).join(', ');
+          const more  = extra > 0 ? ` <span class="bcm-sub">+${extra} more</span>` : '';
+          return `<span class="bcm-blue">${names}${more}</span>`;
+        })();
 
     // ── Price ──
     let priceHtml;
@@ -396,10 +405,10 @@
       <td class="bcm-num bcm-qty">${fmt(item.qty)}</td>
       <td class="bcm-rarity">${escHtml(item.rarity)}</td>
       <td class="${idCls}">${idLabel}</td>
-      <td>${invHtml}</td>
-      <td>${trdHtml}</td>
-      <td>${priceHtml}</td>
-      <td>${craftHtml}</td>
+      <td class="bcm-col-inv" title="${slots.map(e => `${e.loc} (${e.qty.toLocaleString()})`).join(', ')}">${invHtml}</td>
+      <td class="bcm-col-trd" title="${(item.traderSlots || []).map(e => `${e.name} (${e.qty.toLocaleString()})`).join(', ')}">${trdHtml}</td>
+      <td class="bcm-col-price">${priceHtml}</td>
+      <td class="bcm-col-craft">${craftHtml}</td>
       <td></td><td></td><td></td>
     </tr>`;
   }
