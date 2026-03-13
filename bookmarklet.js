@@ -47,6 +47,7 @@
     .bcm-blue{color:#7ec8e3;font-size:.72rem}
     .bcm-inv-ok{color:#4caf50;font-size:.72rem}
     .bcm-inv-part{color:#e0a030;font-size:.72rem}
+    .bcm-barter{color:#c97bff;font-size:.72rem}
     .bcm-col-inv{max-width:160px;line-height:1.7}
     .bcm-col-trd{max-width:260px;line-height:1.7}
     .bcm-col-price{line-height:1.7;white-space:nowrap}
@@ -59,10 +60,11 @@
     sortCol: 'profit', sortAsc: false,
     expiry: null, citizenCount: 0,
     playerId: null, claimId: null,
-    marketDone: false, tradersDone: false, craftDone: false,
+    marketDone: false, tradersDone: false, craftDone: false, barterDone: false,
     countdownTimer: null, refreshTimer: null, refreshCountdownTimer: null,
     refreshAt: null, loading: false,
     filterCompletable: false,
+    itemsMap: {}, cargoMap: {},  // global name catalogs
   };
 
   // ── Entry ─────────────────────────────────────────────────────────────────────
@@ -87,15 +89,20 @@
   async function startRun() {
     if (G.loading) return;
     G.loading = true;
-    G.marketDone = false; G.tradersDone = false; G.craftDone = false;
+    G.marketDone = false; G.tradersDone = false; G.craftDone = false; G.barterDone = false;
     setStatus('Fetching task data…');
 
     try {
-      const [tasksData, citizensData, myInvData] = await Promise.all([
+      const [tasksData, citizensData, myInvData, itemsCatalog, cargoCatalog] = await Promise.all([
         apiFetch(`/api/players/${G.playerId}/traveler-tasks`),
         apiFetch(`/api/claims/${G.claimId}/citizens`),
         apiFetch(`/api/players/${G.playerId}/inventories`),
+        apiFetch('/api/items').catch(() => null),
+        apiFetch('/api/cargo').catch(() => null),
       ]);
+
+      G.itemsMap = buildNameMap(itemsCatalog);
+      G.cargoMap = buildNameMap(cargoCatalog);
 
       G.expiry       = tasksData.expirationTimestamp;
       G.citizenCount = citizensData.citizens?.length ?? 0;
@@ -112,6 +119,7 @@
         enrichMarket(),
         enrichTraders(citizensData),
         enrichCrafting(myInvData),
+        enrichBarter(),
       ]);
       setStatus('');
     } catch (err) {
@@ -136,15 +144,17 @@
       for (const req of (task.requiredItems || [])) {
         const isCargo = req.item_type === 'cargo';
         const info    = (isCargo ? tasksData.cargo : tasksData.items)?.[req.item_id] ?? {};
+        const idStr   = String(req.item_id);
         items.push({
           taskIdx: tIdx, itemIdx: iIdx,
-          name:    info.name || String(req.item_id),
+          name:    info.name || (isCargo ? G.cargoMap[idStr] : G.itemsMap[idStr]) || idStr,
           qty:     req.quantity,
-          id:      String(req.item_id),
+          id:      idStr,
           type:    req.item_type,
           rarity:  info.rarityStr || '',
-          invSlots:    invMap[String(req.item_id)] || [],
+          invSlots:    invMap[idStr] || [],
           traderSlots: null,   // null = loading
+          barterSlots: null,   // null = loading
           price:       null,   // null = loading; false = not listed
           craftInfo:   null,   // null = loading
         });
@@ -155,6 +165,18 @@
       tIdx++;
     }
     return tasks;
+  }
+
+  // Build {id_str: name_str} from /api/items or /api/cargo responses (array or keyed-object)
+  function buildNameMap(data) {
+    const map = {};
+    if (!data) return map;
+    if (Array.isArray(data)) {
+      for (const it of data) if (it?.id != null) map[String(it.id)] = it.name || '';
+    } else {
+      for (const [id, it] of Object.entries(data)) if (it?.name) map[id] = it.name;
+    }
+    return map;
   }
 
   function buildInvMap(myInvData) {
@@ -232,6 +254,32 @@
     if (!G.craftDone) setStatus('Loading crafting data…');
   }
 
+  // ── Barter stall enrichment — /api/claims/{id}/inventories ──────────────────
+  async function enrichBarter() {
+    try {
+      const d = await apiFetch(`/api/claims/${G.claimId}/inventories`);
+      const map = {};
+      for (const inv of (d?.inventories || [])) {
+        if (!inv.inventoryName?.includes('Barter Stall')) continue;
+        for (const pocket of (inv.pockets || [])) {
+          const c = pocket.contents; if (!c) continue;
+          const k = String(c.itemId);
+          if (!map[k]) map[k] = [];
+          map[k].push({ name: inv.inventoryName, qty: c.quantity });
+        }
+      }
+      for (const task of G.tasks)
+        for (const item of task.items)
+          item.barterSlots = (map[item.id] || []).filter(e => e.qty >= item.qty);
+    } catch (_) {
+      for (const task of G.tasks)
+        for (const item of task.items)
+          item.barterSlots = [];
+    }
+    G.barterDone = true;
+    renderTable();
+  }
+
   // ── Crafting enrichment — consumedItemStacks / craftedItemStacks ──────────────
   async function enrichCrafting(myInvData) {
     const invMap = buildInvMap(myInvData);
@@ -270,7 +318,7 @@
         const ingQty = (inp.quantity ?? 1) * runs;
         const have   = (invMap[ingId] || []).reduce((s, e) => s + e.qty, 0);
         if (have >= ingQty) anyOk = true; else allOk = false;
-        details.push({ id: ingId, name: inp.name || ingId, need: ingQty, have });
+        details.push({ id: ingId, name: inp.name || G.itemsMap[ingId] || G.cargoMap[ingId] || ingId, need: ingQty, have });
       }
       craftMap[k] = {
         status:  allOk ? 'yes' : anyOk ? 'partial' : 'no',
@@ -331,7 +379,8 @@
     return task.items.every(item => {
       if ((item.invSlots || []).reduce((s, e) => s + e.qty, 0) >= item.qty) return true; // in inventory
       if (item.price)                           return true;   // on market at claim
-      if ((item.traderSlots || []).length > 0)  return true;   // trader has stock
+      if ((item.traderSlots || []).length > 0)  return true;   // trader stand has stock
+      if ((item.barterSlots || []).length > 0)  return true;   // barter stall has stock
       if (item.craftInfo?.status === 'yes')     return true;   // fully craftable
       return false;
     });
@@ -363,13 +412,20 @@
     }).join('<br>');
 
     const trdHtml = task.items.map(item => {
-      if (item.traderSlots == null && !G.tradersDone) return '⏳';
-      if (!(item.traderSlots || []).length) return `<span class="bcm-dim">—</span>`;
-      const shown = item.traderSlots.slice(0, 3);
-      const extra = item.traderSlots.length - 3;
-      const names = shown.map(e => `${escHtml(e.name)} <span class="bcm-sub">(${e.qty.toLocaleString()})</span>`).join(', ');
-      const more  = extra > 0 ? ` <span class="bcm-sub">+${extra} more</span>` : '';
-      return `<span class="bcm-blue">${names}${more}</span>`;
+      const allDone = G.tradersDone && G.barterDone;
+      if (!allDone && item.traderSlots == null && item.barterSlots == null) return '⏳';
+      const combined = [
+        ...(item.traderSlots || []).map(e => ({ ...e, cls: 'bcm-blue' })),
+        ...(item.barterSlots || []).map(e => ({ ...e, cls: 'bcm-barter' })),
+      ];
+      if (!combined.length) return allDone ? `<span class="bcm-dim">—</span>` : '⏳';
+      const shown = combined.slice(0, 4);
+      const extra = combined.length - 4;
+      const entries = shown.map(e =>
+        `<span class="${e.cls}">${escHtml(e.name)} <span class="bcm-sub">(${e.qty.toLocaleString()})</span></span>`
+      ).join(', ');
+      const more = extra > 0 ? ` <span class="bcm-sub">+${extra} more</span>` : '';
+      return entries + more;
     }).join('<br>');
 
     const priceHtml = task.items.map(item => {
