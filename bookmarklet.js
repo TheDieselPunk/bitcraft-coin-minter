@@ -476,13 +476,13 @@
   function showTableModal() {
     document.getElementById('bcm-overlay')?.remove();
 
-    // 9 columns: Traveler | Items | My Inventory | Traders | Price | Craftable | Reward | Cost | Profit
+    // 9 columns: Traveler | Items | My Inventory | Traders | Claim Market Price | Craftable | Reward | Cost | Profit
     const COLS = [
       { label: 'Traveler',       sort: 'traveler'  },
       { label: 'Items',          sort: null         },
       { label: 'My Inventory',   sort: null         },
       { label: 'Traders',        sort: null         },
-      { label: `Price ${HEX}`,   sort: null         },
+      { label: `Claim Market Price ${HEX}`, sort: null },
       { label: 'Craftable',      sort: null         },
       { label: `Reward ${HEX}`,  sort: 'reward'     },
       { label: `Cost ${HEX}`,    sort: 'totalCost'  },
@@ -627,7 +627,7 @@
 
   // ── Export ────────────────────────────────────────────────────────────────────
   function toTSV() {
-    const rows = [['Traveler','Task','Reward','Cost','Profit','Item','Qty','Rarity','ID','My Inventory','Traders','Unit Price','Total Price','Craftable'].join('\t')];
+    const rows = [['Traveler','Task','Reward','Cost','Profit','Item','Qty','Rarity','ID','My Inventory','Traders','Claim Market Unit Price','Claim Market Total Price','Craftable'].join('\t')];
     for (const t of G.tasks) {
       for (const i of t.items) {
         rows.push([
